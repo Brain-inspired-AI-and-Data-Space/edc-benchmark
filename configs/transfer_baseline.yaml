@@ -1,0 +1,29 @@
+experiment_id: exp002
+scenario: transfer_baseline
+repeat: 3
+output_dir: results/local/exp002
+
+provider_management_url: http://localhost:19193/management
+consumer_management_url: http://localhost:29193/management
+
+provider_protocol_url: http://localhost:19194/protocol
+consumer_protocol_url: http://localhost:29194/protocol
+
+provider_public_url: http://localhost:19291/public
+
+api_key: password
+
+request_timeout_s: 30
+poll_interval_s: 2
+poll_timeout_s: 180
+
+data_size_mb: 1
+asset_base_url: https://jsonplaceholder.typicode.com/users
+
+asset_template_path: transfer/transfer-01-negotiation/resources/create-asset.json
+policy_template_path: transfer/transfer-01-negotiation/resources/create-policy.json
+contract_definition_template_path: transfer/transfer-01-negotiation/resources/create-contract-definition.json
+
+dataset_request_template_path: transfer/transfer-01-negotiation/resources/get-dataset.json
+negotiation_template_path: transfer/transfer-01-negotiation/resources/negotiate-contract.json
+transfer_template_path: transfer/transfer-02-provider-push/resources/start-transfer.json
