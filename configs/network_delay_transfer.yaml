@@ -1,31 +1,33 @@
-experiment_id: exp004
-scenario: policy_overhead
+experiment_id: exp_fault_003
+scenario: network_delay_transfer
 repeat: 3
-output_dir: results/local/exp004
+output_dir: results/local/exp_fault_003
 
 provider_management_url: http://localhost:19193/management
 consumer_management_url: http://localhost:29193/management
 
-provider_protocol_url: http://localhost:19194/protocol
+# 注意：这里 protocol URL 已经指向 toxiproxy 代理端口，不是直连 19194
+provider_protocol_url: http://localhost:30001/protocol
 consumer_protocol_url: http://localhost:29194/protocol
-
 provider_public_url: http://localhost:19291/public
 
 api_key: password
 
 request_timeout_s: 30
-poll_interval_s: 2
-poll_timeout_s: 120
+poll_interval_s: 0.2
+poll_timeout_s: 240
 
-policy_mode: simple    
-
-asset_base_url: http://localhost:8088/file_1mb.bin
+data_size_mb: 10
+asset_base_url: http://localhost:8088/file_10mb.bin
 
 asset_template_path: transfer/transfer-01-negotiation/resources/create-asset.json
+policy_template_path: transfer/transfer-01-negotiation/resources/create-policy.json
 contract_definition_template_path: transfer/transfer-01-negotiation/resources/create-contract-definition.json
+
 dataset_request_template_path: transfer/transfer-01-negotiation/resources/get-dataset.json
 negotiation_template_path: transfer/transfer-01-negotiation/resources/negotiate-contract.json
+transfer_template_path: transfer/transfer-02-provider-push/resources/start-transfer.json
 
-
-
-policy_template_simple_path:  transfer/transfer-01-negotiation/resources/create-policy.json
+toxiproxy_base_url: http://localhost:8474
+toxiproxy_proxy_name: provider_protocol_proxy
+latency_ms: 200

@@ -61,9 +61,14 @@ python -m scripts.run_experiment --config configs/transfer_dataSize.yaml
 python -m scripts.run_experiment --config configs/policy_overhead.yaml
 5、provider中断鲁棒
 python -m scripts.run_experiment --config configs/provider_restart_during_transfer.yaml
-
-
+6、consumer中断鲁棒（transfer process 的状态存在 内存 store 里，consumer 重启后，transfer 状态上下文丢失了）
+python -m scripts.run_experiment --config configs/consumer_restart_during_transfer.yaml 
+7、网络延迟
+ python -m scripts.run_experiment --config configs/network_delay_transfer.yaml
+8、传输中断
+ python -m scripts.run_experiment --config configs/transfer_interruption.yaml
 ```
+
 
 ## 目录
 
@@ -89,5 +94,78 @@ fsutil file createnew file_100mb.bin 104857600
 
 然后在那个目录下启动 HTTP 服务：
 python -m http.server 8088
+```
+
+## 加网络时延，Toxiproxy容器部署
+
+```
+docker run -d --name toxiproxy -p 8474:8474 -p 30001:30001 -p 30002:30002 ghcr.io/shopify/toxiproxy
+
+docker ps
+```
+
+添加protocol代理在（docs目录下运行）：
+
+```
+curl.exe -X POST "http://localhost:8474/proxies" -H "Content-Type: application/json" --data-binary "@provider_protocol_proxy.json"
+```
+
+添加public代理：
+
+```
+curl.exe -X POST "http://localhost:8474/proxies" -H "Content-Type: application/json" --data-binary "@provider_public_proxy.json"
+```
+
+查看所有代理：
+
+```
+curl.exe "http://localhost:8474/proxies"
+```
+
+加protocol时延：
+
+```
+curl.exe -X POST "http://localhost:8474/proxies/provider_protocol_proxy/toxics" -H "Content-Type: application/json" --data-binary "@latency.json" 
+```
+
+加public时延：
+
+```
+curl.exe -X POST "http://localhost:8474/proxies/provider_public_proxy/toxics" -H "Content-Type: application/json" --data-binary "@public_latency.json"
+```
+
+
+改latency(200,500,1000,2000)和flitter,同时 文件大小，中断注入时间也会影响
+
+运行：
+
+```
+ python -m scripts.run_experiment --config configs/network_delay_transfer.yaml
+
+ python -m scripts.run_experiment --config configs/transfer_interruption.yaml
+```
+
+ 删除时延：
+
+```
+ curl.exe -X DELETE "http://localhost:8474/proxies/provider_protocol_proxy/toxics/latency"
+
+  curl.exe -X DELETE "http://localhost:8474/proxies/provider_public_proxy/toxics/public_latency"
+```
+
+验证是否加上时延或者删掉：
+
+```
+ curl.exe "http://localhost:8474/proxies/provider_protocol_proxy/toxics"
+
+  curl.exe "http://localhost:8474/proxies/provider_public_proxy/toxics"
+```
+
+ 主要看 catalog latency 和 contract-agreement-latency
+
+ 删除容器：
+
+```
+ docker rm -f toxiproxy
 ```
 

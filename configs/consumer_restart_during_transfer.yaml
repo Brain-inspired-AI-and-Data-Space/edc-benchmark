@@ -1,21 +1,20 @@
-experiment_id: exp_fault_004
-scenario: transfer_interruption
+experiment_id: exp_fault_002
+scenario: consumer_restart_during_transfer
 repeat: 3
-output_dir: results/local/exp_fault_004
+output_dir: results/local/exp_fault_002
 
 provider_management_url: http://localhost:19193/management
 consumer_management_url: http://localhost:29193/management
 provider_protocol_url: http://localhost:19194/protocol
 consumer_protocol_url: http://localhost:29194/protocol
-
-# 如果你中断的是 provider public 流量，建议这里也改成代理地址
-provider_public_url: http://localhost:30002/public
+provider_public_url: http://localhost:19291/public
 
 api_key: password
 
-request_timeout_s: 30
-poll_interval_s: 0.2
-poll_timeout_s: 240
+request_timeout_s: 60
+poll_interval_s: 2
+poll_timeout_s: 180
+post_fault_observation_timeout_s: 60
 
 data_size_mb: 10
 asset_base_url: http://localhost:8088/file_10mb.bin
@@ -28,10 +27,13 @@ dataset_request_template_path: transfer/transfer-01-negotiation/resources/get-da
 negotiation_template_path: transfer/transfer-01-negotiation/resources/negotiate-contract.json
 transfer_template_path: transfer/transfer-02-provider-push/resources/start-transfer.json
 
-fault_injection_delay_s: 0.5
-retry_attempts: 3
-retry_interval_s: 5
+fault_injection_delay_s: 5
+retry_attempts: 2
+retry_interval_s: 3
 
-toxiproxy_base_url: http://localhost:8474
-toxiproxy_proxy_name: provider_public_proxy
-interruption_timeout_ms: 30000
+consumer_restart_command: E:/edc-benchmark/edc-benchmark-2/scripts/start_consumer.bat
+consumer_restart_workdir: E:/edc-benchmark/edc-benchmark-2
+consumer_recovery_host: localhost
+consumer_recovery_port: 29193
+consumer_down_timeout_s: 30
+consumer_up_timeout_s: 60

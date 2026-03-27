@@ -1,0 +1,9 @@
+{
+  "name": "latency",
+  "type": "latency",
+  "stream": "downstream",
+  "attributes": {
+    "latency": 1000,
+    "jitter": 300
+  }
+}

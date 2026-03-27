@@ -1,0 +1,5 @@
+{
+  "name": "provider_protocol_proxy",
+  "listen": "0.0.0.0:30001",
+  "upstream": "host.docker.internal:19194"
+}

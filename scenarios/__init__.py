@@ -3,8 +3,9 @@ from .negotiation_baseline import NegotiationBaselineScenario
 from .transfer_baseline import TransferBaselineScenario
 from .policy_overhead import PolicyOverheadScenario
 from .provider_restart_during_transfer import ProviderRestartDuringTransferScenario
-#from .network_delay_transfer import NetworkDelayTransferScenario
-#from .transfer_interruption import TransferInterruptionScenario
+from .network_delay_transfer import NetworkDelayTransferScenario
+from .transfer_interruption import TransferInterruptionScenario
+from .consumer_restart_during_transfer import ConsumerRestartDuringTransferScenario
 
 
 SCENARIO_REGISTRY = {
@@ -12,6 +13,8 @@ SCENARIO_REGISTRY = {
     "transfer_baseline": TransferBaselineScenario,
     "policy_overhead": PolicyOverheadScenario,
     "provider_restart_during_transfer": ProviderRestartDuringTransferScenario,
-   # "network_delay_transfer": NetworkDelayTransferScenario,
-    #"transfer_interruption": TransferInterruptionScenario,
+    "consumer_restart_during_transfer": ConsumerRestartDuringTransferScenario,
+
+    "network_delay_transfer": NetworkDelayTransferScenario,
+    "transfer_interruption": TransferInterruptionScenario,
 }

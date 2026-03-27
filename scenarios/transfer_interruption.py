@@ -33,16 +33,22 @@ class TransferInterruptionScenario(ScenarioBase):
         try:
             toxiproxy.clear_toxics(proxy_name)
 
+            # 公共资源创建（不计入四段核心时延）
             self.create_common_resources(run_ids)
 
+            # ---- 1) Catalog Request ----
             dataset_request_payload = render_template(
                 self.config["dataset_request_template_path"],
                 run_ids,
             )
-            dataset_response = self.consumer.request_dataset(dataset_request_payload)
+            with timer() as t_catalog:
+                dataset_response = self.consumer.request_dataset(dataset_request_payload)
+
+            result["catalog_request_latency_s"] = round(t_catalog["duration_s"], 6)
             offer_id = self.extract_offer_id(dataset_response)
             result["offer_id"] = offer_id
 
+            # ---- 2) Contract Offer Negotiation ----
             negotiation_vars = dict(run_ids)
             negotiation_vars["CONTRACT_OFFER_ID"] = offer_id
             negotiation_payload = render_template(
@@ -50,9 +56,19 @@ class TransferInterruptionScenario(ScenarioBase):
                 negotiation_vars,
             )
 
-            negotiation_response = self.consumer.start_negotiation(negotiation_payload)
+            with timer() as t_neg:
+                negotiation_response = self.consumer.start_negotiation(negotiation_payload)
+
+            result["contract_offer_negotiation_latency_s"] = round(t_neg["duration_s"], 6)
             negotiation_id = negotiation_response["@id"]
-            final_negotiation = self.wait_for_negotiation(negotiation_id)
+            result["negotiation_id"] = negotiation_id
+
+            # ---- 3) Contract Agreement ----
+            with timer() as t_agreement:
+                final_negotiation = self.wait_for_negotiation(negotiation_id)
+
+            result["contract_agreement_latency_s"] = round(t_agreement["duration_s"], 6)
+            result["negotiation_state"] = final_negotiation.get("state")
 
             agreement_id = self.extract_agreement_id(final_negotiation)
             if not agreement_id:
@@ -64,6 +80,7 @@ class TransferInterruptionScenario(ScenarioBase):
 
             result["contract_agreement_id"] = agreement_id
 
+            # ---- 4) Transfer Initiation ----
             transfer_vars = dict(run_ids)
             transfer_vars["CONTRACT_AGREEMENT_ID"] = agreement_id
             transfer_payload = render_template(
@@ -78,9 +95,18 @@ class TransferInterruptionScenario(ScenarioBase):
             result["transfer_id"] = transfer_id
             result["transfer_initiation_latency_s"] = round(t_transfer_init["duration_s"], 6)
 
-            # 等待几秒后，中断传输链路
+            result["control_plane_total_latency_s"] = round(
+                result["catalog_request_latency_s"]
+                + result["contract_offer_negotiation_latency_s"]
+                + result["contract_agreement_latency_s"]
+                + result["transfer_initiation_latency_s"],
+                6,
+            )
+
+            # ---- 故障注入：中断传输链路 ----
             fault_delay_s = float(self.config.get("fault_injection_delay_s", 2.0))
             time.sleep(fault_delay_s)
+            fault_start = time.perf_counter()
             toxiproxy.create_timeout(proxy_name, timeout_ms=interruption_timeout_ms)
 
             result["fault_type"] = "transfer_interruption"
@@ -103,6 +129,11 @@ class TransferInterruptionScenario(ScenarioBase):
                 6,
             )
 
+            result["recovery_time_s"] = round(
+                time.perf_counter() - fault_start,
+                6,
+            )
+
             if final_transfer is None:
                 result["failed_transactions"] = 1
                 result["degraded_mode_success_rate"] = 0.0
@@ -110,6 +141,17 @@ class TransferInterruptionScenario(ScenarioBase):
                 return result
 
             result["transfer_state"] = final_transfer.get("state")
+
+            # 这里把 interruption 后到最终完成的时间算进 transfer completion
+            result["transfer_completion_latency_s"] = round(
+                result["recovery_time_s"],
+                6,
+            )
+            result["transfer_end_to_end_latency_s"] = round(
+                result["transfer_initiation_latency_s"] + result["transfer_completion_latency_s"],
+                6,
+            )
+
             success_states = {"COMPLETED", "FINISHED", "DEPROVISIONED"}
 
             if final_transfer.get("state") in success_states:
