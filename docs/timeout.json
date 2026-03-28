@@ -1,6 +1,6 @@
 {
-  "name": "public_latency",
-  "type": "latency",
+  "name": "timeout",
+  "type": "timeout",
   "stream": "downstream",
   "attributes": {
     "timeout": 30000

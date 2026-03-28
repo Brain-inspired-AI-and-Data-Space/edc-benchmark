@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .base import ScenarioBase, render_template, timer
+from .base import ScenarioBase, render_template
 
 
 class TransferBaselineScenario(ScenarioBase):
@@ -33,10 +33,10 @@ class TransferBaselineScenario(ScenarioBase):
                 run_ids,
             )
 
-            with timer() as t_catalog:
-                dataset_response = self.consumer.request_dataset(dataset_request_payload)
-
-            result["catalog_request_latency_s"] = round(t_catalog["duration_s"], 6)
+            dataset_response, catalog_latency = self.measure_catalog_request(
+                dataset_request_payload
+            )
+            result["catalog_request_latency_s"] = catalog_latency
 
             offer_id = self.extract_offer_id(dataset_response)
             result["offer_id"] = offer_id
@@ -50,22 +50,20 @@ class TransferBaselineScenario(ScenarioBase):
                 negotiation_vars,
             )
 
-            with timer() as t_negotiation_request:
-                negotiation_response = self.consumer.start_negotiation(negotiation_payload)
+            negotiation_response, negotiation_latency = (
+                self.measure_contract_offer_negotiation(negotiation_payload)
+            )
 
             negotiation_id = negotiation_response["@id"]
             result["negotiation_id"] = negotiation_id
-            result["contract_offer_negotiation_latency_s"] = round(
-                t_negotiation_request["duration_s"], 6
-            )
+            result["contract_offer_negotiation_latency_s"] = negotiation_latency
 
             # ---- 3) Contract Agreement ----
-            with timer() as t_agreement:
-                final_negotiation = self.wait_for_negotiation(negotiation_id)
-
-            result["contract_agreement_latency_s"] = round(
-                t_agreement["duration_s"], 6
+            final_negotiation, agreement_latency = self.measure_contract_agreement(
+                negotiation_id
             )
+
+            result["contract_agreement_latency_s"] = agreement_latency
             result["negotiation_state"] = final_negotiation.get("state")
 
             agreement_id = self.extract_agreement_id(final_negotiation)
@@ -87,36 +85,51 @@ class TransferBaselineScenario(ScenarioBase):
                 transfer_vars,
             )
 
-            with timer() as t_transfer_initiation:
-                transfer_response = self.consumer.start_transfer(transfer_payload)
+            transfer_response, transfer_initiation_latency = (
+                self.measure_transfer_initiation(transfer_payload)
+            )
 
             transfer_id = transfer_response["@id"]
             result["transfer_id"] = transfer_id
-            result["transfer_initiation_latency_s"] = round(
-                t_transfer_initiation["duration_s"], 6
+            result["transfer_initiation_latency_s"] = transfer_initiation_latency
+
+            # ---- Transfer Completion ----
+            final_transfer, transfer_completion_latency = (
+                self.measure_transfer_completion(transfer_id)
             )
 
-            # 可选：继续轮询 transfer 最终状态（不计入 transfer initiation 四段指标）
-            with timer() as t_transfer_completion:
-                final_transfer = self.wait_for_transfer(transfer_id)
-
-            result["transfer_completion_latency_s"] = round(
-                t_transfer_completion["duration_s"], 6
-            )
+            result["transfer_completion_latency_s"] = transfer_completion_latency
             result["transfer_state"] = final_transfer.get("state")
 
             # 总控制/编排耗时（四段）
-            result["control_plane_total_latency_s"] = round(
-                result["catalog_request_latency_s"]
-                + result["contract_offer_negotiation_latency_s"]
-                + result["contract_agreement_latency_s"]
-                + result["transfer_initiation_latency_s"],
-                6,
+            result["control_plane_total_latency_s"] = (
+                self.compute_control_plane_total_latency(
+                    catalog_request_latency_s=result["catalog_request_latency_s"],
+                    contract_offer_negotiation_latency_s=result[
+                        "contract_offer_negotiation_latency_s"
+                    ],
+                    contract_agreement_latency_s=result[
+                        "contract_agreement_latency_s"
+                    ],
+                    transfer_initiation_latency_s=result[
+                        "transfer_initiation_latency_s"
+                    ],
+                )
             )
-            # 端到端传输时间
-            result["transfer_end_to_end_latency_s"] = round(result["transfer_initiation_latency_s"] + result["transfer_completion_latency_s"],6,)
 
-            # 额外给吞吐量（基于完成耗时，不属于四段之一）
+            # 端到端传输时间（统一口径）
+            result["transfer_end_to_end_latency_s"] = (
+                self.compute_transfer_end_to_end_latency(
+                    transfer_initiation_latency_s=result[
+                        "transfer_initiation_latency_s"
+                    ],
+                    transfer_completion_latency_s=result[
+                        "transfer_completion_latency_s"
+                    ],
+                )
+            )
+
+            # 吞吐量：统一基于 transfer_completion_latency_s 计算
             data_size_mb = float(self.config.get("data_size_mb", 1))
             completion_duration = max(
                 float(result["transfer_completion_latency_s"]), 1e-9

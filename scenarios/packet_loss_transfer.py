@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from scenarios.base import ScenarioBase, render_template, timer
+from scenarios.base import ScenarioBase, render_template
 from scripts.fault_injectors.network_faults import ToxiproxyClient
 
 
@@ -62,10 +62,11 @@ class PacketLossTransferScenario(ScenarioBase):
                 self.config["dataset_request_template_path"],
                 run_ids,
             )
-            with timer() as t_catalog:
-                dataset_response = self.consumer.request_dataset(dataset_request_payload)
+            dataset_response, catalog_latency = self.measure_catalog_request(
+                dataset_request_payload
+            )
+            result["catalog_request_latency_s"] = catalog_latency
 
-            result["catalog_request_latency_s"] = round(t_catalog["duration_s"], 6)
             offer_id = self.extract_offer_id(dataset_response)
             result["offer_id"] = offer_id
 
@@ -77,22 +78,20 @@ class PacketLossTransferScenario(ScenarioBase):
                 negotiation_vars,
             )
 
-            with timer() as t_neg:
-                negotiation_response = self.consumer.start_negotiation(negotiation_payload)
-
-            result["contract_offer_negotiation_latency_s"] = round(
-                t_neg["duration_s"], 6
+            negotiation_response, negotiation_latency = (
+                self.measure_contract_offer_negotiation(negotiation_payload)
             )
+
+            result["contract_offer_negotiation_latency_s"] = negotiation_latency
             negotiation_id = negotiation_response["@id"]
             result["negotiation_id"] = negotiation_id
 
             # ---- 3) Contract Agreement ----
-            with timer() as t_agreement:
-                final_negotiation = self.wait_for_negotiation(negotiation_id)
-
-            result["contract_agreement_latency_s"] = round(
-                t_agreement["duration_s"], 6
+            final_negotiation, agreement_latency = self.measure_contract_agreement(
+                negotiation_id
             )
+
+            result["contract_agreement_latency_s"] = agreement_latency
             result["negotiation_state"] = final_negotiation.get("state")
 
             agreement_id = self.extract_agreement_id(final_negotiation)
@@ -116,22 +115,28 @@ class PacketLossTransferScenario(ScenarioBase):
                 transfer_vars,
             )
 
-            with timer() as t_transfer_init:
-                transfer_response = self.consumer.start_transfer(transfer_payload)
-
-            result["transfer_initiation_latency_s"] = round(
-                t_transfer_init["duration_s"], 6
+            transfer_response, transfer_initiation_latency = (
+                self.measure_transfer_initiation(transfer_payload)
             )
+
+            result["transfer_initiation_latency_s"] = transfer_initiation_latency
 
             transfer_id = transfer_response["@id"]
             result["transfer_id"] = transfer_id
 
-            result["control_plane_total_latency_s"] = round(
-                result["catalog_request_latency_s"]
-                + result["contract_offer_negotiation_latency_s"]
-                + result["contract_agreement_latency_s"]
-                + result["transfer_initiation_latency_s"],
-                6,
+            result["control_plane_total_latency_s"] = (
+                self.compute_control_plane_total_latency(
+                    catalog_request_latency_s=result["catalog_request_latency_s"],
+                    contract_offer_negotiation_latency_s=result[
+                        "contract_offer_negotiation_latency_s"
+                    ],
+                    contract_agreement_latency_s=result[
+                        "contract_agreement_latency_s"
+                    ],
+                    transfer_initiation_latency_s=result[
+                        "transfer_initiation_latency_s"
+                    ],
+                )
             )
 
             # ---- Transfer Completion / Retry ----
@@ -141,23 +146,31 @@ class PacketLossTransferScenario(ScenarioBase):
             final_transfer = None
             retry_success_count = 0
 
-            with timer() as t_transfer_completion:
-                for _ in range(retry_attempts):
-                    try:
-                        final_transfer = self.wait_for_transfer(transfer_id)
-                        retry_success_count += 1
-                        break
-                    except Exception:
-                        import time
-                        time.sleep(retry_interval_s)
+            transfer_completion_start = __import__("time").perf_counter()
+
+            for _ in range(retry_attempts):
+                try:
+                    final_transfer = self.wait_for_transfer(transfer_id)
+                    retry_success_count += 1
+                    break
+                except Exception:
+                    import time
+                    time.sleep(retry_interval_s)
 
             result["transfer_completion_latency_s"] = round(
-                t_transfer_completion["duration_s"], 6
-            )
-            result["transfer_end_to_end_latency_s"] = round(
-                result["transfer_initiation_latency_s"]
-                + result["transfer_completion_latency_s"],
+                __import__("time").perf_counter() - transfer_completion_start,
                 6,
+            )
+
+            result["transfer_end_to_end_latency_s"] = (
+                self.compute_transfer_end_to_end_latency(
+                    transfer_initiation_latency_s=result[
+                        "transfer_initiation_latency_s"
+                    ],
+                    transfer_completion_latency_s=result[
+                        "transfer_completion_latency_s"
+                    ],
+                )
             )
 
             result["retry_success_rate"] = round(
@@ -179,6 +192,14 @@ class PacketLossTransferScenario(ScenarioBase):
                 result["success"] = True
                 result["degraded_mode_success_rate"] = 1.0
                 result["failed_transactions"] = 0
+
+                data_size_mb = float(self.config.get("data_size_mb", 1))
+                completion_duration = max(
+                    float(result["transfer_completion_latency_s"]), 1e-9
+                )
+                result["throughput_mb_s"] = round(
+                    data_size_mb / completion_duration, 6
+                )
             else:
                 result["degraded_mode_success_rate"] = 0.0
                 result["failed_transactions"] = 1

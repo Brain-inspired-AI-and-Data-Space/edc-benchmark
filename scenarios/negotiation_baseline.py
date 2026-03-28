@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .base import ScenarioBase, render_template, timer
+from .base import ScenarioBase, render_template
 
 
 class NegotiationBaselineScenario(ScenarioBase):
@@ -23,7 +23,7 @@ class NegotiationBaselineScenario(ScenarioBase):
         )
 
         try:
-            # 先准备公共资源（不计入四段控制面指标）
+            # 先准备公共资源（不计入控制面指标）
             self.create_common_resources(run_ids)
 
             # ---- 1) Catalog Request ----
@@ -32,10 +32,10 @@ class NegotiationBaselineScenario(ScenarioBase):
                 run_ids,
             )
 
-            with timer() as t_catalog:
-                dataset_response = self.consumer.request_dataset(dataset_request_payload)
-
-            result["catalog_request_latency_s"] = round(t_catalog["duration_s"], 6)
+            dataset_response, catalog_latency = self.measure_catalog_request(
+                dataset_request_payload
+            )
+            result["catalog_request_latency_s"] = catalog_latency
 
             offer_id = self.extract_offer_id(dataset_response)
             result["offer_id"] = offer_id
@@ -49,33 +49,37 @@ class NegotiationBaselineScenario(ScenarioBase):
                 negotiation_vars,
             )
 
-            with timer() as t_negotiation_request:
-                negotiation_response = self.consumer.start_negotiation(negotiation_payload)
+            negotiation_response, negotiation_latency = (
+                self.measure_contract_offer_negotiation(negotiation_payload)
+            )
 
             negotiation_id = negotiation_response["@id"]
             result["negotiation_id"] = negotiation_id
-            result["contract_offer_negotiation_latency_s"] = round(
-                t_negotiation_request["duration_s"], 6
-            )
+            result["contract_offer_negotiation_latency_s"] = negotiation_latency
 
             # ---- 3) Contract Agreement ----
-            with timer() as t_agreement:
-                final_negotiation = self.wait_for_negotiation(negotiation_id)
-
-            result["contract_agreement_latency_s"] = round(
-                t_agreement["duration_s"], 6
+            final_negotiation, agreement_latency = self.measure_contract_agreement(
+                negotiation_id
             )
+
+            result["contract_agreement_latency_s"] = agreement_latency
             result["negotiation_state"] = final_negotiation.get("state")
 
             agreement_id = self.extract_agreement_id(final_negotiation)
             result["contract_agreement_id"] = agreement_id
 
-            # 总控制面耗时（前三段）
-            result["control_plane_total_latency_s"] = round(
-                result["catalog_request_latency_s"]
-                + result["contract_offer_negotiation_latency_s"]
-                + result["contract_agreement_latency_s"],
-                6,
+            # 总控制面耗时（前三段，统一口径）
+            result["control_plane_total_latency_s"] = (
+                self.compute_control_plane_total_latency(
+                    catalog_request_latency_s=result["catalog_request_latency_s"],
+                    contract_offer_negotiation_latency_s=result[
+                        "contract_offer_negotiation_latency_s"
+                    ],
+                    contract_agreement_latency_s=result[
+                        "contract_agreement_latency_s"
+                    ],
+                    transfer_initiation_latency_s=None,
+                )
             )
 
             state = final_negotiation.get("state")

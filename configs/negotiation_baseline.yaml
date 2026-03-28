@@ -14,10 +14,10 @@ provider_public_url: http://localhost:19291/public
 api_key: password
 
 request_timeout_s: 30
-poll_interval_s: 2
+poll_interval_s: 0.2
 poll_timeout_s: 120
 
-asset_base_url: http://localhost:8088/file_1mb.bin
+asset_base_url: http://localhost:8088/file_10mb.bin
 asset_template_path: transfer/transfer-01-negotiation/resources/create-asset.json
 policy_template_path: transfer/transfer-01-negotiation/resources/create-policy.json
 contract_definition_template_path: transfer/transfer-01-negotiation/resources/create-contract-definition.json

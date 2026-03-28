@@ -64,6 +64,7 @@ def setup_logger(output_dir: Path) -> logging.Logger:
     logger.addHandler(stream_handler)
     return logger
 
+
 def percentile(values: list[float], p: float) -> float:
     if not values:
         return 0.0
@@ -82,6 +83,7 @@ def percentile(values: list[float], p: float) -> float:
     d1 = values[c] * (k - f)
     return d0 + d1
 
+
 def summarize_rows(rows: list[dict[str, Any]], config: dict[str, Any]) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "experiment_id": config.get("experiment_id"),
@@ -97,24 +99,23 @@ def summarize_rows(rows: list[dict[str, Any]], config: dict[str, Any]) -> dict[s
     else:
         summary["success_rate"] = 0.0
 
-    # 只聚合统一后的核心 benchmark 指标
+    # 统一后的核心 benchmark 指标
     benchmark_fields = [
-    "catalog_request_latency_s",
-    "contract_offer_negotiation_latency_s",
-    "contract_agreement_latency_s",
-    "transfer_initiation_latency_s",
-    "transfer_completion_latency_s",
-    "transfer_end_to_end_latency_s",
-    "control_plane_total_latency_s",
-    "throughput_mb_s",
-    "policy_evaluation_latency_s",
-    "resource_setup_latency_s",
-    "recovery_time_s",
-    "retry_success_rate",
-    "degraded_mode_success_rate",
-    "failed_transactions",
+        "catalog_request_latency_s",
+        "contract_offer_negotiation_latency_s",
+        "contract_agreement_latency_s",
+        "transfer_initiation_latency_s",
+        "transfer_completion_latency_s",
+        "transfer_end_to_end_latency_s",
+        "control_plane_total_latency_s",
+        "throughput_mb_s",
+        "policy_evaluation_latency_s",
+        "resource_setup_latency_s",
+        "recovery_time_s",
+        "retry_success_rate",
+        "degraded_mode_success_rate",
+        "failed_transactions",
     ]
-
 
     aggregates: dict[str, float] = {}
 
@@ -129,6 +130,12 @@ def summarize_rows(rows: list[dict[str, Any]], config: dict[str, Any]) -> dict[s
             aggregates[f"{field}_avg"] = round(mean(values), 6)
             aggregates[f"{field}_min"] = round(min(values), 6)
             aggregates[f"{field}_max"] = round(max(values), 6)
+            aggregates[f"{field}_p50"] = round(percentile(values, 0.50), 6)
+            aggregates[f"{field}_p95"] = round(percentile(values, 0.95), 6)
+
+            # 对计数型字段，补一个 sum，更适合横向比较
+            if field in {"failed_transactions"}:
+                aggregates[f"{field}_sum"] = round(sum(values), 6)
 
     summary["aggregates"] = aggregates
 
@@ -147,7 +154,6 @@ def summarize_rows(rows: list[dict[str, Any]], config: dict[str, Any]) -> dict[s
     summary["failures"] = failures
 
     return summary
-
 
 
 def validate_config(config: dict[str, Any]) -> None:
@@ -174,7 +180,6 @@ def validate_config(config: dict[str, Any]) -> None:
         )
 
 
-
 def main() -> None:
     args = parse_args()
     config_path = Path(args.config)
@@ -184,7 +189,11 @@ def main() -> None:
     output_dir = prepare_output_dir(config, config_path)
     logger = setup_logger(output_dir)
 
-    logger.info("Starting experiment_id=%s scenario=%s", config["experiment_id"], config["scenario"])
+    logger.info(
+        "Starting experiment_id=%s scenario=%s",
+        config["experiment_id"],
+        config["scenario"],
+    )
     logger.info("Output directory: %s", output_dir)
 
     scenario_cls = SCENARIO_REGISTRY[config["scenario"]]

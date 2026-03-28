@@ -30,4 +30,4 @@ transfer_template_path: transfer/transfer-02-provider-push/resources/start-trans
 
 toxiproxy_base_url: http://localhost:8474
 toxiproxy_proxy_name: provider_protocol_proxy
-latency_ms: 200
+latency_ms: 1000

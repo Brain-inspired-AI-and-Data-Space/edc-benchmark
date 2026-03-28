@@ -16,7 +16,7 @@ provider_public_url: http://localhost:30002/public
 api_key: password
 
 request_timeout_s: 30
-poll_interval_s: 0.5
+poll_interval_s: 0.2
 poll_timeout_s: 240
 
 data_size_mb: 10

@@ -215,7 +215,7 @@ class ScenarioBase:
             "PROVIDER_PROTOCOL_URL": self.provider_protocol_url,
             "CONSUMER_PROTOCOL_URL": self.consumer_protocol_url,
             "PROVIDER_PUBLIC_URL": self.provider_public_url,
-             "ASSET_BASE_URL": self.config.get("asset_base_url", ""),
+            "ASSET_BASE_URL": self.config.get("asset_base_url", ""),
         }
 
     def get_policy_template_path(self) -> str:
@@ -325,6 +325,116 @@ class ScenarioBase:
             _done,
             timeout_s=self.poll_timeout_s,
             interval_s=self.poll_interval_s,
+        )
+
+    # ------------------------------------------------------------------
+    # 统一指标口径 helper
+    # ------------------------------------------------------------------
+
+    def measure_catalog_request(
+        self, dataset_request_payload: dict[str, Any]
+    ) -> tuple[dict[str, Any], float]:
+        """
+        统一口径：
+        catalog_request_latency_s =
+        从 consumer 发起 dataset/catalog request 开始，
+        到收到完整 dataset 响应为止。
+        """
+        with timer() as t:
+            dataset_response = self.consumer.request_dataset(dataset_request_payload)
+        return dataset_response, round(t["duration_s"], 6)
+
+    def measure_contract_offer_negotiation(
+        self, negotiation_payload: dict[str, Any]
+    ) -> tuple[dict[str, Any], float]:
+        """
+        统一口径：
+        contract_offer_negotiation_latency_s =
+        从 consumer 发起 POST /contractnegotiations 开始，
+        到收到 negotiation_id 为止。
+        """
+        with timer() as t:
+            negotiation_response = self.consumer.start_negotiation(negotiation_payload)
+        return negotiation_response, round(t["duration_s"], 6)
+
+    def measure_contract_agreement(
+        self, negotiation_id: str
+    ) -> tuple[dict[str, Any], float]:
+        """
+        统一口径：
+        contract_agreement_latency_s =
+        从开始轮询 negotiation 状态开始，
+        到 agreement 可被提取出来（或 negotiation 结束）为止。
+        """
+        with timer() as t:
+            final_negotiation = self.wait_for_negotiation(negotiation_id)
+        return final_negotiation, round(t["duration_s"], 6)
+
+    def measure_transfer_initiation(
+        self, transfer_payload: dict[str, Any]
+    ) -> tuple[dict[str, Any], float]:
+        """
+        统一口径：
+        transfer_initiation_latency_s =
+        从 consumer 发起 POST /transferprocesses 开始，
+        到收到 transfer_id 为止。
+        """
+        with timer() as t:
+            transfer_response = self.consumer.start_transfer(transfer_payload)
+        return transfer_response, round(t["duration_s"], 6)
+
+    def measure_transfer_completion(
+        self, transfer_id: str
+    ) -> tuple[dict[str, Any], float]:
+        """
+        统一口径：
+        transfer_completion_latency_s =
+        从 transfer_id 已经拿到之后开始，
+        到 transfer 进入最终状态（成功/失败）为止。
+
+        注意：
+        baseline、network delay、packet loss、restart、interruption
+        都必须用这个同一口径，才能直接比较。
+        """
+        with timer() as t:
+            final_transfer = self.wait_for_transfer(transfer_id)
+        return final_transfer, round(t["duration_s"], 6)
+
+    def compute_control_plane_total_latency(
+        self,
+        catalog_request_latency_s: float | None = None,
+        contract_offer_negotiation_latency_s: float | None = None,
+        contract_agreement_latency_s: float | None = None,
+        transfer_initiation_latency_s: float | None = None,
+    ) -> float:
+        values = [
+            catalog_request_latency_s,
+            contract_offer_negotiation_latency_s,
+            contract_agreement_latency_s,
+            transfer_initiation_latency_s,
+        ]
+        total = sum(v for v in values if isinstance(v, (int, float)))
+        return round(total, 6)
+
+    def compute_transfer_end_to_end_latency(
+        self,
+        transfer_initiation_latency_s: float | None,
+        transfer_completion_latency_s: float | None,
+    ) -> float | None:
+        """
+        统一口径：
+        transfer_end_to_end_latency_s =
+        transfer_initiation_latency_s + transfer_completion_latency_s
+        """
+        if not isinstance(transfer_initiation_latency_s, (int, float)):
+            return None
+        if not isinstance(transfer_completion_latency_s, (int, float)):
+            return None
+
+        return round(
+            float(transfer_initiation_latency_s)
+            + float(transfer_completion_latency_s),
+            6,
         )
 
     def run_once(self, run_index: int) -> dict[str, Any]:

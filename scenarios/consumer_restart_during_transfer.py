@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 
-from scenarios.base import ScenarioBase, render_template, timer
+from scenarios.base import ScenarioBase, render_template
 from scripts.fault_injectors.process_faults import restart_process_by_port
 
 logger = logging.getLogger(__name__)
@@ -41,9 +41,10 @@ class ConsumerRestartDuringTransferScenario(ScenarioBase):
                 self.config["dataset_request_template_path"],
                 run_ids,
             )
-            with timer() as t_catalog:
-                dataset_response = self.consumer.request_dataset(dataset_request_payload)
-            result["catalog_request_latency_s"] = round(t_catalog["duration_s"], 6)
+            dataset_response, catalog_latency = self.measure_catalog_request(
+                dataset_request_payload
+            )
+            result["catalog_request_latency_s"] = catalog_latency
 
             offer_id = self.extract_offer_id(dataset_response)
             result["offer_id"] = offer_id
@@ -56,21 +57,19 @@ class ConsumerRestartDuringTransferScenario(ScenarioBase):
                 negotiation_vars,
             )
 
-            with timer() as t_negotiation:
-                negotiation_response = self.consumer.start_negotiation(negotiation_payload)
-            result["contract_offer_negotiation_latency_s"] = round(
-                t_negotiation["duration_s"], 6
+            negotiation_response, negotiation_latency = (
+                self.measure_contract_offer_negotiation(negotiation_payload)
             )
+            result["contract_offer_negotiation_latency_s"] = negotiation_latency
 
             negotiation_id = negotiation_response["@id"]
             result["negotiation_id"] = negotiation_id
 
             logger.info("Waiting for agreement")
-            with timer() as t_agreement:
-                final_negotiation = self.wait_for_negotiation(negotiation_id)
-            result["contract_agreement_latency_s"] = round(
-                t_agreement["duration_s"], 6
+            final_negotiation, agreement_latency = self.measure_contract_agreement(
+                negotiation_id
             )
+            result["contract_agreement_latency_s"] = agreement_latency
             result["negotiation_state"] = final_negotiation.get("state")
 
             agreement_id = self.extract_agreement_id(final_negotiation)
@@ -94,22 +93,32 @@ class ConsumerRestartDuringTransferScenario(ScenarioBase):
                 transfer_vars,
             )
 
-            with timer() as t_transfer_initiation:
-                transfer_response = self.consumer.start_transfer(transfer_payload)
-            result["transfer_initiation_latency_s"] = round(
-                t_transfer_initiation["duration_s"], 6
+            transfer_response, transfer_initiation_latency = (
+                self.measure_transfer_initiation(transfer_payload)
             )
+            result["transfer_initiation_latency_s"] = transfer_initiation_latency
 
             transfer_id = transfer_response["@id"]
             result["transfer_id"] = transfer_id
 
-            result["control_plane_total_latency_s"] = round(
-                result["catalog_request_latency_s"]
-                + result["contract_offer_negotiation_latency_s"]
-                + result["contract_agreement_latency_s"]
-                + result["transfer_initiation_latency_s"],
-                6,
+            result["control_plane_total_latency_s"] = (
+                self.compute_control_plane_total_latency(
+                    catalog_request_latency_s=result["catalog_request_latency_s"],
+                    contract_offer_negotiation_latency_s=result[
+                        "contract_offer_negotiation_latency_s"
+                    ],
+                    contract_agreement_latency_s=result[
+                        "contract_agreement_latency_s"
+                    ],
+                    transfer_initiation_latency_s=result[
+                        "transfer_initiation_latency_s"
+                    ],
+                )
             )
+
+            # 关键修正：
+            # transfer_completion_latency_s 从拿到 transfer_id 后立刻开始计时
+            transfer_completion_start = time.perf_counter()
 
             fault_delay_s = float(self.config.get("fault_injection_delay_s", 2))
             logger.info("Sleeping %.2fs before consumer restart fault injection", fault_delay_s)
@@ -143,7 +152,6 @@ class ConsumerRestartDuringTransferScenario(ScenarioBase):
             observed_state = None
             successful_observations = 0
 
-            observation_start = time.perf_counter()
             deadline = time.time() + observation_timeout_s
 
             for attempt in range(retry_attempts):
@@ -186,11 +194,18 @@ class ConsumerRestartDuringTransferScenario(ScenarioBase):
                 except Exception as exc:
                     logger.warning("Final transfer lookup failed: %s", exc)
 
-            completion_latency_s = time.perf_counter() - observation_start
+            completion_latency_s = time.perf_counter() - transfer_completion_start
             result["transfer_completion_latency_s"] = round(completion_latency_s, 6)
-            result["transfer_end_to_end_latency_s"] = round(
-                result["transfer_initiation_latency_s"] + result["transfer_completion_latency_s"],
-                6,
+
+            result["transfer_end_to_end_latency_s"] = (
+                self.compute_transfer_end_to_end_latency(
+                    transfer_initiation_latency_s=result[
+                        "transfer_initiation_latency_s"
+                    ],
+                    transfer_completion_latency_s=result[
+                        "transfer_completion_latency_s"
+                    ],
+                )
             )
 
             result["retry_success_rate"] = round(
@@ -207,7 +222,9 @@ class ConsumerRestartDuringTransferScenario(ScenarioBase):
                 result["degraded_mode_success_rate"] = 1.0
 
                 data_size_mb = float(self.config.get("data_size_mb", 1))
-                completion_duration = max(float(result["transfer_completion_latency_s"]), 1e-9)
+                completion_duration = max(
+                    float(result["transfer_completion_latency_s"]), 1e-9
+                )
                 result["throughput_mb_s"] = round(data_size_mb / completion_duration, 6)
 
             else:
