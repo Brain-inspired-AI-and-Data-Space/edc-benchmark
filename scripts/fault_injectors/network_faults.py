@@ -12,7 +12,7 @@ class ToxiproxyClient:
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
 
-    def _check(self, response: requests.Response) -> dict:
+    def _check(self, response: requests.Response):
         if not response.ok:
             raise NetworkFaultError(
                 f"HTTP {response.status_code} calling {response.request.method} "
@@ -22,7 +22,7 @@ class ToxiproxyClient:
             return response.json()
         return {}
 
-    def create_latency(self, proxy_name: str, latency_ms: int, jitter_ms: int = 0) -> dict:
+    def create_latency(self, proxy_name: str, latency_ms: int, jitter_ms: int = 0):
         payload = {
             "name": f"latency_{latency_ms}",
             "type": "latency",
@@ -39,14 +39,19 @@ class ToxiproxyClient:
         )
         return self._check(resp)
 
-    def create_packet_loss(self, proxy_name: str, toxicity: float = 1.0, percent: float = 10.0) -> dict:
+    def create_packet_loss(self, proxy_name: str, average_size: int = 512, size_variation: int = 128, delay_us: int = 0):
+        """
+        用 slicer 近似模拟 packet loss / 分片抖动场景。
+        这不是严格意义的真实丢包，但对 benchmark 的鲁棒性测试足够有代表性。
+        """
         payload = {
-            "name": f"packet_loss_{int(percent)}",
-            "type": "limit_data",
+            "name": f"slicer_{average_size}",
+            "type": "slicer",
             "stream": "downstream",
-            "toxicity": toxicity,
             "attributes": {
-                "bytes": 1
+                "average_size": average_size,
+                "size_variation": size_variation,
+                "delay": delay_us,
             },
         }
         resp = self.session.post(
@@ -56,13 +61,29 @@ class ToxiproxyClient:
         )
         return self._check(resp)
 
-    def create_timeout(self, proxy_name: str, timeout_ms: int = 30000) -> dict:
+    def create_timeout(self, proxy_name: str, timeout_ms: int = 30000):
         payload = {
             "name": f"timeout_{timeout_ms}",
             "type": "timeout",
             "stream": "downstream",
             "attributes": {
                 "timeout": timeout_ms
+            },
+        }
+        resp = self.session.post(
+            f"{self.base_url}/proxies/{proxy_name}/toxics",
+            json=payload,
+            timeout=10,
+        )
+        return self._check(resp)
+
+    def create_bandwidth(self, proxy_name: str, rate_kb: int = 128):
+        payload = {
+            "name": f"bandwidth_{rate_kb}",
+            "type": "bandwidth",
+            "stream": "downstream",
+            "attributes": {
+                "rate": rate_kb
             },
         }
         resp = self.session.post(

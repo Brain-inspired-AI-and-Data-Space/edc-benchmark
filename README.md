@@ -68,7 +68,7 @@ python -m scripts.run_experiment --config configs/provider_restart_during_transf
 python -m scripts.run_experiment --config configs/consumer_restart_during_transfer.yaml 
 7、网络延迟
  python -m scripts.run_experiment --config configs/network_delay_transfer.yaml
-8、传输中断
+8、传输超时
  python -m scripts.run_experiment --config configs/transfer_interruption.yaml
 ```
 
@@ -134,7 +134,7 @@ curl.exe -X POST "http://localhost:8474/proxies/provider_protocol_proxy/toxics" 
 加public时延：
 
 ```
-curl.exe -X POST "http://localhost:8474/proxies/provider_public_proxy/toxics" -H "Content-Type: application/json" --data-binary "@public_latency.json"
+curl.exe -X POST "http://localhost:8474/proxies/provider_public_proxy/toxics" -H "Content-Type: application/json" --data-binary "@timeout.json"
 ```
 
 
@@ -153,7 +153,7 @@ curl.exe -X POST "http://localhost:8474/proxies/provider_public_proxy/toxics" -H
 ```
  curl.exe -X DELETE "http://localhost:8474/proxies/provider_protocol_proxy/toxics/latency"
 
-  curl.exe -X DELETE "http://localhost:8474/proxies/provider_public_proxy/toxics/public_latency"
+  curl.exe -X DELETE "http://localhost:8474/proxies/provider_public_proxy/toxics/timeout"
 ```
 
 验证是否加上时延或者删掉：

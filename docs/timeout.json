@@ -3,7 +3,6 @@
   "type": "latency",
   "stream": "downstream",
   "attributes": {
-    "latency": 500,
-    "jitter": 0
+    "timeout": 30000
   }
 }

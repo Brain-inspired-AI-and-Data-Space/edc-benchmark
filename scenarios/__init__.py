@@ -6,6 +6,7 @@ from .provider_restart_during_transfer import ProviderRestartDuringTransferScena
 from .network_delay_transfer import NetworkDelayTransferScenario
 from .transfer_interruption import TransferInterruptionScenario
 from .consumer_restart_during_transfer import ConsumerRestartDuringTransferScenario
+from .packet_loss_transfer import PacketLossTransferScenario
 
 
 SCENARIO_REGISTRY = {
@@ -17,4 +18,6 @@ SCENARIO_REGISTRY = {
 
     "network_delay_transfer": NetworkDelayTransferScenario,
     "transfer_interruption": TransferInterruptionScenario,
+    "packet_loss_transfer": PacketLossTransferScenario,
+
 }

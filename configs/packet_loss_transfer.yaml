@@ -1,0 +1,43 @@
+experiment_id: exp_fault_005
+scenario: packet_loss_transfer
+repeat: 3
+output_dir: results/local/exp_fault_005
+
+provider_management_url: http://localhost:19193/management
+consumer_management_url: http://localhost:29193/management
+
+# protocol 走代理
+provider_protocol_url: http://localhost:30001/protocol
+consumer_protocol_url: http://localhost:29194/protocol
+
+# public 也走代理
+provider_public_url: http://localhost:30002/public
+
+api_key: password
+
+request_timeout_s: 30
+poll_interval_s: 0.5
+poll_timeout_s: 240
+
+data_size_mb: 10
+asset_base_url: http://localhost:8088/file_10mb.bin
+
+asset_template_path: transfer/transfer-01-negotiation/resources/create-asset.json
+policy_template_path: transfer/transfer-01-negotiation/resources/create-policy.json
+contract_definition_template_path: transfer/transfer-01-negotiation/resources/create-contract-definition.json
+
+dataset_request_template_path: transfer/transfer-01-negotiation/resources/get-dataset.json
+negotiation_template_path: transfer/transfer-01-negotiation/resources/negotiate-contract.json
+transfer_template_path: transfer/transfer-02-provider-push/resources/start-transfer.json
+
+toxiproxy_base_url: http://localhost:8474
+toxiproxy_protocol_proxy_name: provider_protocol_proxy
+toxiproxy_public_proxy_name: provider_public_proxy
+
+# 用 slicer 近似模拟 packet loss / 抖动
+packet_slicer_average_size: 512
+packet_slicer_size_variation: 128
+packet_slicer_delay_us: 0
+
+retry_attempts: 3
+retry_interval_s: 5
