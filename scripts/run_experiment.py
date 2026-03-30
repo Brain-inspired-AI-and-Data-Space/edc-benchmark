@@ -94,12 +94,9 @@ def summarize_rows(rows: list[dict[str, Any]], config: dict[str, Any]) -> dict[s
         "failed_runs": sum(1 for r in rows if r.get("success") is not True),
     }
 
-    if rows:
-        summary["success_rate"] = round(summary["success_runs"] / len(rows), 6)
-    else:
-        summary["success_rate"] = 0.0
+    summary["success_rate"] = round(summary["success_runs"] / max(len(rows), 1), 6)
 
-    # 统一后的核心 benchmark 指标
+    # 统一的指标列表
     benchmark_fields = [
         "catalog_request_latency_s",
         "contract_offer_negotiation_latency_s",
@@ -117,29 +114,31 @@ def summarize_rows(rows: list[dict[str, Any]], config: dict[str, Any]) -> dict[s
         "failed_transactions",
     ]
 
-    aggregates: dict[str, float] = {}
+    aggregates: dict[str, Any] = {}
 
     for field in benchmark_fields:
-        values = []
+        values: list[float] = []
         for row in rows:
-            value = row.get(field)
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
-                values.append(float(value))
+            val = row.get(field)
+            if isinstance(val, (int, float)) and not isinstance(val, bool):
+                values.append(float(val))
 
-        if values:
-            aggregates[f"{field}_avg"] = round(mean(values), 6)
-            aggregates[f"{field}_min"] = round(min(values), 6)
-            aggregates[f"{field}_max"] = round(max(values), 6)
-            aggregates[f"{field}_p50"] = round(percentile(values, 0.50), 6)
-            aggregates[f"{field}_p95"] = round(percentile(values, 0.95), 6)
+        if not values:
+            continue  # 如果这个指标在所有 row 都没值，跳过
 
-            # 对计数型字段，补一个 sum，更适合横向比较
-            if field in {"failed_transactions"}:
-                aggregates[f"{field}_sum"] = round(sum(values), 6)
+        aggregates[f"{field}_avg"] = round(mean(values), 6)
+        aggregates[f"{field}_min"] = round(min(values), 6)
+        aggregates[f"{field}_max"] = round(max(values), 6)
+        aggregates[f"{field}_p50"] = round(percentile(values, 0.50), 6)
+        aggregates[f"{field}_p95"] = round(percentile(values, 0.95), 6)
+
+        # 对计数型字段补 sum
+        if field in {"failed_transactions"}:
+            aggregates[f"{field}_sum"] = round(sum(values), 6)
 
     summary["aggregates"] = aggregates
 
-    # 保留失败详情，方便后续检查
+    # 保留失败详情
     failures = []
     for row in rows:
         if row.get("success") is not True:
